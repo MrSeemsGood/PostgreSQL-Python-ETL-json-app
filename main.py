@@ -30,27 +30,21 @@ def write_to_db(data, connection, cursor):
     try:
         extras.execute_values(
             cursor,
-            "INSERT INTO prices_schema.prices(id, Price, EFF_FROM) VALUES %s",
+            "INSERT INTO prices_schema.prices(id, price, eff_from) VALUES %s",
             data
             )
         connection.commit()
         cursor.execute('SELECT CURRENT_TIMESTAMP(0);')
         end = cursor.fetchone()
         return start, end
-    except psycopg2.errors.RaiseException:
-        # Custom trigger-made exception
+    except:
         return None, None
 
 
 def fetch_from_db(cursor):
     '''Fetch results from the database.'''
     cursor.execute("""
-        SELECT id, Price, EFF_FROM, (
-        COALESCE(
-            (SELECT EFF_FROM FROM prices_schema.prices p1 WHERE p0.id = p1.id AND p0.EFF_FROM < p1.EFF_FROM LIMIT 1),
-            TO_DATE('6000-00-00', 'YYYY-MM-DD')
-            ) - 1
-        ) EFF_TO From prices_schema.prices p0;
+        SELECT * FROM prices_schema.prices;
         """)
 
     return cursor.fetchall()
@@ -59,8 +53,8 @@ def fetch_from_db(cursor):
 def functionality(filepath:str):
     '''The "everything" function called when the app accepts a .json input file.'''
     # read .json file
-    file = open(filepath, 'r', encoding='utf-8')
-    loaded:dict = json.load(file)
+    with open(filepath, 'r', encoding='utf-8') as file:
+        loaded:dict = json.load(file)
 
     # connect to db and create a cursor
     prices_conn = psycopg2.connect(
@@ -78,6 +72,7 @@ def functionality(filepath:str):
         [process_id]
         )
     if len(prices_cur.fetchall()) > 0:
+        parserAppWindow.centralWidget().findChild(QLabel).setText('Failed')
         QMessageBox.information(
             None,
             'process_journal entry failed',
@@ -166,8 +161,8 @@ class ParserAppWindow(QMainWindow):
 
     def appearance(self):
         '''Set window's appearance.'''
-        self.setFixedSize(500, 500)
-        self.setWindowTitle('Glowbyte .json parser')
+        self.setFixedSize(450, 550)
+        self.setWindowTitle('ETL .json parser')
 
     def place_widgets(self):
         '''Place widgets.'''
@@ -200,8 +195,8 @@ class ParserAppWindow(QMainWindow):
         # row 5
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        table = QTableWidget(10, 4, scroll)
-        table.setHorizontalHeaderLabels(('id', 'Price', 'EFF_FROM', 'EFF_TO'))
+        table = QTableWidget(3, 4, scroll)
+        table.setHorizontalHeaderLabels(('id', 'price', 'eff_from', 'eff_to'))
 
         scroll.setWidget(table)
         grid.addWidget(scroll, 5, 1, 1, 3)
@@ -218,6 +213,8 @@ class ParserAppWindow(QMainWindow):
     def update_table_widget(self, content:list[tuple]):
         '''Update QTableWidget with fetched data.'''
         table_widget:QTableWidget = self.centralWidget().findChild(QScrollArea).widget()
+        table_widget.clearContents()
+        table_widget.setRowCount(len(content))
         for i, content_row in enumerate(content):
             for j, value in enumerate(content_row):
                 item = QTableWidgetItem(str(value))
